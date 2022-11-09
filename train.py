@@ -150,7 +150,7 @@ def train(rank, a, h):
 
             # begin
             if use_vae:
-                spk_embedding, logvar, mu = ae(x)
+                spk_embedding, logvar, mu = ae(y)
                 y_g_hat = generator(x, spk_embedding)
             else:
                 y_g_hat = generator(x)

@@ -78,8 +78,9 @@ class Generator(torch.nn.Module):
         self.h = h
         self.num_kernels = len(h.resblock_kernel_sizes)
         self.num_upsamples = len(h.upsample_rates)
+        self.upsample_rates = h.upsample_rates
         self.use_vae = True if h.get("use_vae") and h.use_vae else False
-        self.conv_pre = weight_norm(Conv1d(80, h.upsample_initial_channel, 7, 1, padding=3))
+        self.conv_pre = weight_norm(Conv1d(80 + h.vae_dim, h.upsample_initial_channel, 7, 1, padding=3))
         resblock = ResBlock1 if h.resblock == '1' else ResBlock2
 
         self.ups = nn.ModuleList()
@@ -107,8 +108,10 @@ class Generator(torch.nn.Module):
 
         x = self.conv_pre(x)
         for i in range(self.num_upsamples):
+            before_length = x.size(-1)
             x = F.leaky_relu(x, LRELU_SLOPE)
             x = self.ups[i](x)
+            x = x[:, :, :before_length*self.upsample_rates[i]]
             xs = None
             for j in range(self.num_kernels):
                 if xs is None:
