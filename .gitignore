@@ -3,3 +3,4 @@ data*
 cp_hifigan
 .vscoder
 .idea
+__pycache__
