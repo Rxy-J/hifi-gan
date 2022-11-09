@@ -1,0 +1,7 @@
+data
+output
+cp_hifigan
+__pycache__
+start.bat
+test.*
+vocoder*
