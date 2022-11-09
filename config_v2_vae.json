@@ -27,6 +27,11 @@
     "fmax": 12000,
     "fmax_for_loss": null,
 
+    "use_ae": true,
+    "ae_encoder_lays": 3,
+    "ae_encoder_pool": [5,2],
+    "vae_dim": 48,
+
     "num_workers": 4,
 
     "dist_config": {

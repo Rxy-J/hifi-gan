@@ -14,7 +14,12 @@ from torch.distributed import init_process_group
 from torch.nn.parallel import DistributedDataParallel
 from env import AttrDict, build_env
 from meldataset import MelDataset, mel_spectrogram, get_dataset_filelist
-from models import Generator, MultiPeriodDiscriminator, MultiScaleDiscriminator, feature_loss, generator_loss,\
+from models import AudioEncoder, \
+    Generator, \
+    MultiPeriodDiscriminator, \
+    MultiScaleDiscriminator, \
+    feature_loss, \
+    generator_loss,\
     discriminator_loss
 from utils import plot_spectrogram, scan_checkpoint, load_checkpoint, save_checkpoint
 
@@ -28,7 +33,12 @@ def train(rank, a, h):
 
     torch.cuda.manual_seed(h.seed)
     device = torch.device('cuda:{:d}'.format(rank))
-
+    
+    # begin
+    use_vae = True if h.get("use_vae") and h.use_vae else False
+    if use_vae:
+        ae = AudioEncoder(h.ae_encoder_lays, h.ae_encoder_pool, h.vae_dim).to(device)
+    # end
     generator = Generator(h).to(device)
     mpd = MultiPeriodDiscriminator().to(device)
     msd = MultiScaleDiscriminator().to(device)
@@ -52,15 +62,30 @@ def train(rank, a, h):
         generator.load_state_dict(state_dict_g['generator'])
         mpd.load_state_dict(state_dict_do['mpd'])
         msd.load_state_dict(state_dict_do['msd'])
+        # begin
+        if use_vae:
+            ae.load_state_dict(state_dict_do['ae'])
+        # end
         steps = state_dict_do['steps'] + 1
         last_epoch = state_dict_do['epoch']
 
     if h.num_gpus > 1:
+        # begin
+        if use_vae:
+            ae = DistributedDataParallel(ae, device_ids=[rank]).to(device)
+        # end
         generator = DistributedDataParallel(generator, device_ids=[rank]).to(device)
         mpd = DistributedDataParallel(mpd, device_ids=[rank]).to(device)
         msd = DistributedDataParallel(msd, device_ids=[rank]).to(device)
 
-    optim_g = torch.optim.AdamW(generator.parameters(), h.learning_rate, betas=[h.adam_b1, h.adam_b2])
+    # begin
+    if use_vae:
+        optim_g = torch.optim.AdamW(itertools.chain(generator.parameters(), ae.parameters()), 
+                                h.learning_rate, betas=[h.adam_b1, h.adam_b2])
+    else:
+        optim_g = torch.optim.AdamW(generator.parameters(), h.learning_rate, betas=[h.adam_b1, h.adam_b2])
+    # end
+    # optim_g = torch.optim.AdamW(generator.parameters(), h.learning_rate, betas=[h.adam_b1, h.adam_b2])
     optim_d = torch.optim.AdamW(itertools.chain(msd.parameters(), mpd.parameters()),
                                 h.learning_rate, betas=[h.adam_b1, h.adam_b2])
 
@@ -98,7 +123,11 @@ def train(rank, a, h):
                                        drop_last=True)
 
         sw = SummaryWriter(os.path.join(a.checkpoint_path, 'logs'))
-
+    
+    # begin
+    if use_vae:
+        ae.train()
+    # end
     generator.train()
     mpd.train()
     msd.train()
@@ -119,7 +148,13 @@ def train(rank, a, h):
             y_mel = torch.autograd.Variable(y_mel.to(device, non_blocking=True))
             y = y.unsqueeze(1)
 
-            y_g_hat = generator(x)
+            # begin
+            if use_vae:
+                spk_embedding, logvar, mu = ae(x)
+                y_g_hat = generator(x, spk_embedding)
+            else:
+                y_g_hat = generator(x)
+            # end
             y_g_hat_mel = mel_spectrogram(y_g_hat.squeeze(1), h.n_fft, h.num_mels, h.sampling_rate, h.hop_size, h.win_size,
                                           h.fmin, h.fmax_for_loss)
 
@@ -152,6 +187,12 @@ def train(rank, a, h):
             loss_gen_s, losses_gen_s = generator_loss(y_ds_hat_g)
             loss_gen_all = loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel
 
+            # begin
+            if use_vae:
+                loss_gen_kl = torch.mean(-0.5 * torch.sum(1 + logvar - mu ** 2 - logvar.exp(), dim=-1))
+                loss_gen_all += loss_gen_kl
+            # end
+
             loss_gen_all.backward()
             optim_g.step()
 
@@ -168,15 +209,22 @@ def train(rank, a, h):
                 if steps % a.checkpoint_interval == 0 and steps != 0:
                     checkpoint_path = "{}/g_{:08d}".format(a.checkpoint_path, steps)
                     save_checkpoint(checkpoint_path,
-                                    {'generator': (generator.module if h.num_gpus > 1 else generator).state_dict()})
+                                    {
+                                        'generator': (generator.module if h.num_gpus > 1 else generator).state_dict()
+                                    }
+                    )
                     checkpoint_path = "{}/do_{:08d}".format(a.checkpoint_path, steps)
                     save_checkpoint(checkpoint_path, 
-                                    {'mpd': (mpd.module if h.num_gpus > 1
-                                                         else mpd).state_dict(),
-                                     'msd': (msd.module if h.num_gpus > 1
-                                                         else msd).state_dict(),
-                                     'optim_g': optim_g.state_dict(), 'optim_d': optim_d.state_dict(), 'steps': steps,
-                                     'epoch': epoch})
+                                    {
+                                        'mpd': (mpd.module if h.num_gpus > 1 else mpd).state_dict(),
+                                        'msd': (msd.module if h.num_gpus > 1 else msd).state_dict(),
+                                        'optim_g': optim_g.state_dict(), 
+                                        'optim_d': optim_d.state_dict(), 
+                                        'ae': None if not use_vae else ae.state_dict(),
+                                        'steps': steps,
+                                        'epoch': epoch
+                                    }
+                    )
 
                 # Tensorboard summary logging
                 if steps % a.summary_interval == 0:
@@ -191,7 +239,7 @@ def train(rank, a, h):
                     with torch.no_grad():
                         for j, batch in enumerate(validation_loader):
                             x, y, _, y_mel = batch
-                            y_g_hat = generator(x.to(device))
+                            y_g_hat = generator.inference(x.to(device))
                             y_mel = torch.autograd.Variable(y_mel.to(device, non_blocking=True))
                             y_g_hat_mel = mel_spectrogram(y_g_hat.squeeze(1), h.n_fft, h.num_mels, h.sampling_rate,
                                                           h.hop_size, h.win_size,
@@ -230,12 +278,12 @@ def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--group_name', default=None)
-    parser.add_argument('--input_wavs_dir', default='LJSpeech-1.1/wavs')
-    parser.add_argument('--input_mels_dir', default='ft_dataset')
-    parser.add_argument('--input_training_file', default='LJSpeech-1.1/training.txt')
-    parser.add_argument('--input_validation_file', default='LJSpeech-1.1/validation.txt')
+    parser.add_argument('--input_wavs_dir', default='data/24k_wavs')
+    parser.add_argument('--input_mels_dir', default='data/mels')
+    parser.add_argument('--input_training_file', default='data/file_lst/train.lst')
+    parser.add_argument('--input_validation_file', default='data/file_lst/test.lst')
     parser.add_argument('--checkpoint_path', default='cp_hifigan')
-    parser.add_argument('--config', default='')
+    parser.add_argument('--config', default='config_v2_vae.json')
     parser.add_argument('--training_epochs', default=3100, type=int)
     parser.add_argument('--stdout_interval', default=5, type=int)
     parser.add_argument('--checkpoint_interval', default=5000, type=int)
