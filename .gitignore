@@ -4,3 +4,4 @@ cp_hifigan
 .vscoder
 .idea
 __pycache__
+tensor*
