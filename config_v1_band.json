@@ -23,7 +23,7 @@
 
     "sampling_rate": 24000,
 
-    "num_band": 4,
+    "num_bands": 4,
     "post_channel": [5, 1],
 
     "fmin": 0,

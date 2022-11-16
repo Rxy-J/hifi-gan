@@ -81,7 +81,7 @@ class Generator(torch.nn.Module):
         self.num_kernels = len(h.resblock_kernel_sizes)
         self.upsample_rates = h.upsample_rates
         self.num_upsamples = len(h.upsample_rates)
-        self.use_sub_band = True  if h.get("num_band") and h.num_bands > 1 else False
+        self.use_sub_band = True  if h.get("num_bands") and h.num_bands > 1 else False
         self.conv_pre = weight_norm(Conv1d(80, h.upsample_initial_channel, 7, 1, padding=3))
         resblock = ResBlock1 if h.resblock == '1' else ResBlock2
 

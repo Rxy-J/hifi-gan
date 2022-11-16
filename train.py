@@ -73,8 +73,7 @@ def train(rank, a, h):
 
     training_filelist, validation_filelist = get_dataset_filelist(a)
 
-    trainset = MelDataset(training_filelist, h.segment_size, h.n_fft, h.num_mels,
-                          h.hop_size, h.win_size, h.sampling_rate, h.fmin, h.fmax, n_cache_reuse=0,
+    trainset = MelDataset(training_filelist, h, n_cache_reuse=0,
                           shuffle=False if h.num_gpus > 1 else True, fmax_loss=h.fmax_for_loss, device=device,
                           fine_tuning=a.fine_tuning, base_mels_path=a.input_mels_dir)
 
@@ -87,8 +86,7 @@ def train(rank, a, h):
                               drop_last=True)
 
     if rank == 0:
-        validset = MelDataset(validation_filelist, h.segment_size, h.n_fft, h.num_mels,
-                              h.hop_size, h.win_size, h.sampling_rate, h.fmin, h.fmax, False, False, n_cache_reuse=0,
+        validset = MelDataset(validation_filelist, h, False, False, n_cache_reuse=0,
                               fmax_loss=h.fmax_for_loss, device=device, fine_tuning=a.fine_tuning,
                               base_mels_path=a.input_mels_dir)
         validation_loader = DataLoader(validset, num_workers=1, shuffle=False,
