@@ -5,3 +5,4 @@ __pycache__
 start.bat
 test.*
 vocoder*
+tensor*

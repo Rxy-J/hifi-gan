@@ -8,8 +8,8 @@ import json
 import torch
 from scipy.io.wavfile import write
 from env import AttrDict
-from meldataset import MAX_WAV_VALUE
 from models import Generator
+from audio import MAX_AUDIO_VALUE
 
 h = None
 device = None
@@ -47,9 +47,11 @@ def inference(a):
         for i, filname in enumerate(filelist):
             x = np.load(os.path.join(a.input_mels_dir, filname))
             x = torch.FloatTensor(x).to(device)
+            if len(x.size()) < 3:
+                x.unsqueeze(0)
             y_g_hat = generator(x)
             audio = y_g_hat.squeeze()
-            audio = audio * MAX_WAV_VALUE
+            audio *= MAX_AUDIO_VALUE
             audio = audio.cpu().numpy().astype('int16')
 
             output_file = os.path.join(a.output_dir, os.path.splitext(filname)[0] + '_generated_e2e.wav')

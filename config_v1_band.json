@@ -30,6 +30,16 @@
     "fmax": 12000,
     "fmax_for_loss": null,
 
+    "min_level_db": -115,
+    "ref_level_db": 20,
+    "min_db": -115,
+    "max_abs_value": 1.0,
+    "power": 1.5,
+    "griffin_lim_iters": 60,
+    "signal_normalization": true,
+    "allow_clipping_in_normalization": true,
+    "symmetric_acoustic": true,
+
     "num_workers": 1,
 
     "dist_config": {

@@ -7,12 +7,11 @@ import json
 import torch
 from scipy.io.wavfile import write
 from env import AttrDict
-from meldataset import mel_spectrogram, MAX_WAV_VALUE, load_wav
 from models import Generator
+from audio import melspectrogram, load_wav, MAX_AUDIO_VALUE
 
 h = None
 device = None
-
 
 def load_checkpoint(filepath, device):
     assert os.path.isfile(filepath)
@@ -23,7 +22,7 @@ def load_checkpoint(filepath, device):
 
 
 def get_mel(x):
-    return mel_spectrogram(x, h.n_fft, h.num_mels, h.sampling_rate, h.hop_size, h.win_size, h.fmin, h.fmax)
+    return melspectrogram(x, h)
 
 
 def scan_checkpoint(cp_dir, prefix):
@@ -48,13 +47,17 @@ def inference(a):
     generator.remove_weight_norm()
     with torch.no_grad():
         for i, filname in enumerate(filelist):
-            wav, sr = load_wav(os.path.join(a.input_wavs_dir, filname))
-            wav = wav / MAX_WAV_VALUE
+            wav = load_wav(os.path.join(a.input_wavs_dir, filname), 
+                            h.sampling_rate, 
+                            h.sampling_rate, 
+                            h.win_size, 
+                            h.hop_size)
+            wav /= MAX_AUDIO_VALUE
             wav = torch.FloatTensor(wav).to(device)
             x = get_mel(wav.unsqueeze(0))
             y_g_hat = generator(x)
             audio = y_g_hat.squeeze()
-            audio = audio * MAX_WAV_VALUE
+            audio *= MAX_AUDIO_VALUE
             audio = audio.cpu().numpy().astype('int16')
 
             output_file = os.path.join(a.output_dir, os.path.splitext(filname)[0] + '_generated.wav')
@@ -92,4 +95,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
