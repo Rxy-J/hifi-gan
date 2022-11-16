@@ -6,9 +6,9 @@ from torch.nn import Conv1d, ConvTranspose1d, AvgPool1d, Conv2d
 from torch.nn.utils import weight_norm, remove_weight_norm, spectral_norm
 from utils import init_weights, get_padding
 from scipy.signal import kaiser
+from librosa.filters import mel as librosa_mel_fn
 
 LRELU_SLOPE = 0.1
-
 
 class ResBlock1(torch.nn.Module):
     def __init__(self, h, channels, kernel_size=3, dilation=(1, 3, 5)):
@@ -271,70 +271,6 @@ class MultiScaleDiscriminator(torch.nn.Module):
         return y_d_rs, y_d_gs, fmap_rs, fmap_gs
 
 
-def feature_loss(fmap_r, fmap_g):
-    loss = 0
-    for dr, dg in zip(fmap_r, fmap_g):
-        for rl, gl in zip(dr, dg):
-            loss += torch.mean(torch.abs(rl - gl))
-
-    return loss*2
-
-
-def discriminator_loss(disc_real_outputs, disc_generated_outputs):
-    loss = 0
-    r_losses = []
-    g_losses = []
-    for dr, dg in zip(disc_real_outputs, disc_generated_outputs):
-        r_loss = torch.mean((1-dr)**2)
-        g_loss = torch.mean(dg**2)
-        loss += (r_loss + g_loss)
-        r_losses.append(r_loss.item())
-        g_losses.append(g_loss.item())
-
-    return loss, r_losses, g_losses
-
-
-def generator_loss(disc_outputs):
-    loss = 0
-    gen_losses = []
-    for dg in disc_outputs:
-        l = torch.mean((1-dg)**2)
-        gen_losses.append(l)
-        loss += l
-
-    return loss, gen_losses
-
-def design_prototype_filter(taps=62, cutoff_ratio=0.142, beta=9.0):
-    """Design prototype filter for PQMF.
-    This method is based on `A Kaiser window approach for the design of prototype
-    filters of cosine modulated filterbanks`_.
-    Args:
-        taps (int): The number of filter taps.
-        cutoff_ratio (float): Cut-off frequency ratio.
-        beta (float): Beta coefficient for kaiser window.
-    Returns:
-        ndarray: Impluse response of prototype filter (taps + 1,).
-    .. _`A Kaiser window approach for the design of prototype filters of cosine modulated filterbanks`:
-        https://ieeexplore.ieee.org/abstract/document/681427
-    """
-    # check the arguments are valid
-    assert taps % 2 == 0, "The number of taps mush be even number."
-    assert 0.0 < cutoff_ratio < 1.0, "Cutoff ratio must be > 0.0 and < 1.0."
-
-    # make initial filter
-    omega_c = np.pi * cutoff_ratio
-    with np.errstate(invalid='ignore'):
-        h_i = np.sin(omega_c * (np.arange(taps + 1) - 0.5 * taps)) \
-            / (np.pi * (np.arange(taps + 1) - 0.5 * taps))
-    h_i[taps //
-        2] = np.cos(0) * cutoff_ratio  # fix nan due to indeterminate form
-
-    # apply kaiser window
-    w = kaiser(taps + 1, beta)
-    h = h_i * w
-
-    return h
-
 class PQMF(torch.nn.Module):
     """PQMF module.
     This module is based on `Near-perfect-reconstruction pseudo-QMF banks`_.
@@ -418,96 +354,135 @@ class PQMF(torch.nn.Module):
         return F.conv1d(self.pad_fn(x), self.synthesis_filter)
 
 
-class AudioEncoder(nn.Module):
-    def __init__(self, audio_encoder_layers, audio_encoder_pool, vae_dim):
-        super().__init__()
-        
-        self.encoders = nn.ModuleList()
+def feature_loss(fmap_r, fmap_g):
+    loss = 0
+    for dr, dg in zip(fmap_r, fmap_g):
+        for rl, gl in zip(dr, dg):
+            loss += torch.mean(torch.abs(rl - gl))
 
-        for i in range(audio_encoder_layers):
-            self.encoders.append(EncoderNet())
+    return loss*2
 
-        self.pools = nn.ModuleList()
-        for i in range(audio_encoder_layers - 1):
-            self.pools.append(
-                AvgPool1d(
-                    kernel_size = audio_encoder_pool[0],
-                    stride=audio_encoder_pool[1])
-                    )
-                
-        self.mean_linear = nn.Linear(48, vae_dim)
-        self.var_linear = nn.Linear(48, vae_dim)
-    
-    def encode(self, x):
-        gconditions = []
-        for i, encoder in enumerate(self.encoders):
-            gcondition = encoder(x)
-            x = self.pools[i-1](x)
-            gconditions.append(gcondition)
-        
-        outputs = torch.cat(gconditions, dim=-1)
+def discriminator_loss(disc_real_outputs, disc_generated_outputs):
+    loss = 0
+    r_losses = []
+    g_losses = []
+    for dr, dg in zip(disc_real_outputs, disc_generated_outputs):
+        r_loss = torch.mean((1-dr)**2)
+        g_loss = torch.mean(dg**2)
+        loss += (r_loss + g_loss)
+        r_losses.append(r_loss.item())
+        g_losses.append(g_loss.item())
 
-        mu = self.mean_linear(outputs)
-        var = self.var_linear(outputs)
-        return mu, var
+    return loss, r_losses, g_losses
 
-    def reparametrize(self, mu, log_var):
-        std = torch.exp(log_var * 0.5)
-        eps = torch.randn_like(std, requires_grad=True)
-        return mu + eps * std
+def generator_loss(disc_outputs):
+    loss = 0
+    gen_losses = []
+    for dg in disc_outputs:
+        l = torch.mean((1-dg)**2)
+        gen_losses.append(l)
+        loss += l
 
-    def forward(self, x):
-        mu, var = self.encode(x)
-        z = self.reparametrize(mu, var) 
-        
-        return z, mu, var
+    return loss, gen_losses
 
-class EncoderNet(nn.Module):
-    def __init__(self):
-        super().__init__()
+def design_prototype_filter(taps=62, cutoff_ratio=0.142, beta=9.0):
+    """Design prototype filter for PQMF.
+    This method is based on `A Kaiser window approach for the design of prototype
+    filters of cosine modulated filterbanks`_.
+    Args:
+        taps (int): The number of filter taps.
+        cutoff_ratio (float): Cut-off frequency ratio.
+        beta (float): Beta coefficient for kaiser window.
+    Returns:
+        ndarray: Impluse response of prototype filter (taps + 1,).
+    .. _`A Kaiser window approach for the design of prototype filters of cosine modulated filterbanks`:
+        https://ieeexplore.ieee.org/abstract/document/681427
+    """
+    # check the arguments are valid
+    assert taps % 2 == 0, "The number of taps mush be even number."
+    assert 0.0 < cutoff_ratio < 1.0, "Cutoff ratio must be > 0.0 and < 1.0."
 
-        self.nets = nn.ModuleList([
-            nn.ReflectionPad1d(22),
-            weight_norm(Conv1d(1, 16, stride=1, kernel_size=10)),
-            nn.LeakyReLU(),
-            weight_norm(Conv1d(16, 32, stride=2, kernel_size=10)),
-            nn.LeakyReLU(),
-            weight_norm(Conv1d(32, 64, stride=1, kernel_size=10)),
-            nn.LeakyReLU(),
-            
-            nn.ReflectionPad1d(22),
-            weight_norm(Conv1d(64, 128, stride=1, kernel_size=10)),
-            nn.LeakyReLU(),
-            weight_norm(Conv1d(128, 256, stride=2, kernel_size=10)),
-            nn.LeakyReLU(),
-            weight_norm(Conv1d(256, 256, stride=1, kernel_size=10)),
-            nn.LeakyReLU(),
-            
-            nn.ReflectionPad1d(22),
-            weight_norm(Conv1d(256, 128, stride=1, kernel_size=10)),
-            nn.LeakyReLU(),
-            weight_norm(Conv1d(128, 64, stride=2, kernel_size=10)),
-            nn.LeakyReLU(),
-            weight_norm(Conv1d(64, 32, stride=1, kernel_size=10)),
-            nn.LeakyReLU(),
+    # make initial filter
+    omega_c = np.pi * cutoff_ratio
+    with np.errstate(invalid='ignore'):
+        h_i = np.sin(omega_c * (np.arange(taps + 1) - 0.5 * taps)) \
+            / (np.pi * (np.arange(taps + 1) - 0.5 * taps))
+    h_i[taps //
+        2] = np.cos(0) * cutoff_ratio  # fix nan due to indeterminate form
 
-            nn.ReflectionPad1d(22),
-            weight_norm(Conv1d(32, 16, stride=1, kernel_size=10)),
-            nn.LeakyReLU(),
-            weight_norm(Conv1d(16, 16, stride=2, kernel_size=10)),
-            nn.LeakyReLU(),
-            weight_norm(Conv1d(16, 16, stride=1, kernel_size=10)),
-            nn.LeakyReLU(),
-            ])
+    # apply kaiser window
+    w = kaiser(taps + 1, beta)
+    h = h_i * w
 
-        self.dense = nn.Linear(16, 16)
+    return h
 
-    def forward(self, x):
-        for net in self.nets:
-            x = net(x)
-        x, _ = torch.max(x, dim=-1)
-        x = self.dense(x)
+def dynamic_range_compression(x, C=1, clip_val=1e-5):
+    return np.log(np.clip(x, a_min=clip_val, a_max=None) * C)
 
-        return x
+def dynamic_range_decompression(x, C=1):
+    return np.exp(x) / C
 
+
+def dynamic_range_compression_torch(x, C=1, clip_val=1e-5):
+    return torch.log(torch.clamp(x, min=clip_val) * C)
+
+def dynamic_range_decompression_torch(x, C=1):
+    return torch.exp(x) / C
+
+
+def spectral_normalize_torch(magnitudes):
+    output = dynamic_range_compression_torch(magnitudes)
+    return output
+
+
+def spectral_de_normalize_torch(magnitudes):
+    output = dynamic_range_decompression_torch(magnitudes)
+    return output
+
+mel_basis = {}
+hann_window = {}
+
+def mel_spectrogram(y,
+                    n_fft,
+                    num_mels,
+                    sampling_rate,
+                    hop_size,
+                    win_size,
+                    fmin,
+                    fmax,
+                    center=False):
+    if torch.min(y) < -1.:
+        print('min value is ', torch.min(y))
+    if torch.max(y) > 1.:
+        print('max value is ', torch.max(y))
+
+    global mel_basis, hann_window
+    if fmax not in mel_basis:
+        mel = librosa_mel_fn(sampling_rate, n_fft, num_mels, fmin, fmax)
+        mel_basis[str(fmax) + '_' +
+                  str(y.device)] = torch.from_numpy(mel).float().to(y.device)
+        hann_window[str(y.device)] = torch.hann_window(win_size).to(y.device)
+
+    y = torch.nn.functional.pad(y.unsqueeze(1), (int(
+        (n_fft - hop_size) / 2), int((n_fft - hop_size) / 2)),
+                                mode='reflect')
+    y = y.squeeze(1)
+
+    spec = torch.stft(y,
+                      n_fft,
+                      hop_length=hop_size,
+                      win_length=win_size,
+                      window=hann_window[str(y.device)],
+                      center=center,
+                      pad_mode='reflect',
+                      normalized=False,
+                      onesided=True)
+
+    spec = torch.sqrt(spec.pow(2).sum(-1) + (1e-9))
+
+    spec = torch.matmul(mel_basis[str(fmax) + '_' + str(y.device)], spec)
+
+    spec = spectral_normalize_torch(spec)
+
+    return spec
 

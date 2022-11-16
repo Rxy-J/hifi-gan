@@ -5,9 +5,6 @@ from scipy.io import wavfile
 import soundfile as sf
 import librosa.filters
 
-MAX_AUDIO_VALUE = 32767
-
-
 def load_wav(wav_path, raw_sr, target_sr=16000, win_size=800, hop_size=200):
     audio = librosa.core.load(wav_path, sr=raw_sr)[0]
     if raw_sr != target_sr:

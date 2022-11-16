@@ -6,7 +6,7 @@ import torch.utils.data
 import numpy as np
 from librosa.util import normalize
 
-from audio import melspectrogram, load_wav, MAX_AUDIO_VALUE
+from audio import melspectrogram, load_wav
 
 def get_dataset_filelist(a):
     with open(a.input_training_file, 'r', encoding='utf-8') as fi:
@@ -52,7 +52,6 @@ class MelDataset(torch.utils.data.Dataset):
                             self.sampling_rate, 
                             self.win_size,
                             self.hop_size)
-            audio /= MAX_AUDIO_VALUE
             if not self.fine_tuning:
                 audio = normalize(audio) * 0.95
             self.cached_wav = audio
@@ -73,7 +72,8 @@ class MelDataset(torch.utils.data.Dataset):
                 else:
                     audio = torch.nn.functional.pad(audio, (0, self.segment_size - audio.size(1)), 'constant')
 
-            mel = melspectrogram(audio, self.hparams)
+            mel = melspectrogram(audio.numpy(), self.hparams)
+            mel = torch.from_numpy(mel)
         else:
             mel = np.load(os.path.join(self.base_mels_path, os.path.splitext(os.path.split(filename)[-1])[0] + '.npy'))
             mel = torch.from_numpy(mel)
@@ -92,9 +92,7 @@ class MelDataset(torch.utils.data.Dataset):
                     mel = torch.nn.functional.pad(mel, (0, frames_per_seg - mel.size(2)), 'constant')
                     audio = torch.nn.functional.pad(audio, (0, self.segment_size - audio.size(1)), 'constant')
 
-        mel_loss = melspectrogram(audio, self.hparams)
-
-        return (mel.squeeze(), audio.squeeze(0), filename, mel_loss.squeeze())
+        return (mel.squeeze(), audio.squeeze(0), filename)
 
     def __len__(self):
         return len(self.audio_files)
