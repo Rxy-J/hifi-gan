@@ -85,7 +85,7 @@ def train(rank, a, h):
                               drop_last=True)
 
     if rank == 0:
-        validset = MelDataset(validation_filelist, h, False, False, n_cache_reuse=0,
+        validset = MelDataset(validation_filelist, h, True, False, n_cache_reuse=0,
                               fmax_loss=h.fmax_for_loss, device=device, fine_tuning=a.fine_tuning,
                               base_mels_path=a.input_mels_dir)
         validation_loader = DataLoader(validset, num_workers=1, shuffle=False,
@@ -188,7 +188,7 @@ def train(rank, a, h):
                         for j, batch in enumerate(validation_loader):
                             x, y, _ = batch
                             y_g_hat = generator(x.to(device))
-                            y_mel = mel_spectrogram(y, h.n_fft, h.num_mels, h.sampling_rate, h.hop_size, h.win_size, h.fmin, h.fmax_for_loss)
+                            y_mel = mel_spectrogram(y.to(device), h.n_fft, h.num_mels, h.sampling_rate, h.hop_size, h.win_size, h.fmin, h.fmax_for_loss)
                             y_g_hat_mel = mel_spectrogram(y_g_hat.squeeze(1), h.n_fft, h.num_mels, h.sampling_rate, h.hop_size, h.win_size,
 -                                          h.fmin, h.fmax_for_loss)
                             val_err_tot += F.l1_loss(y_mel, y_g_hat_mel).item()
