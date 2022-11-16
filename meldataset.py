@@ -64,33 +64,24 @@ class MelDataset(torch.utils.data.Dataset):
         audio = audio.unsqueeze(0)
 
         if not self.fine_tuning:
-            if self.split:
-                if audio.size(1) >= self.segment_size:
-                    max_audio_start = audio.size(1) - self.segment_size
-                    audio_start = random.randint(0, max_audio_start)
-                    audio = audio[:, audio_start:audio_start+self.segment_size]
-                else:
-                    audio = torch.nn.functional.pad(audio, (0, self.segment_size - audio.size(1)), 'constant')
-
-            mel = melspectrogram(audio.numpy(), self.hparams)
+            mel = melspectrogram(audio.squeeze(0).numpy(), self.hparams)
             mel = torch.from_numpy(mel)
         else:
             mel = np.load(os.path.join(self.base_mels_path, os.path.splitext(os.path.split(filename)[-1])[0] + '.npy'))
             mel = torch.from_numpy(mel)
-
             if len(mel.shape) < 3:
                 mel = mel.unsqueeze(0)
 
-            if self.split:
-                frames_per_seg = math.ceil(self.segment_size / self.hop_size)
+        if self.split:
+            frames_per_seg = math.ceil(self.segment_size / self.hop_size)
 
-                if audio.size(1) >= self.segment_size:
-                    mel_start = random.randint(0, mel.size(2) - frames_per_seg - 1)
-                    mel = mel[:, :, mel_start:mel_start + frames_per_seg]
-                    audio = audio[:, mel_start * self.hop_size:(mel_start + frames_per_seg) * self.hop_size]
-                else:
-                    mel = torch.nn.functional.pad(mel, (0, frames_per_seg - mel.size(2)), 'constant')
-                    audio = torch.nn.functional.pad(audio, (0, self.segment_size - audio.size(1)), 'constant')
+            if audio.size(1) >= self.segment_size:
+                mel_start = random.randint(0, mel.size(2) - frames_per_seg - 1)
+                mel = mel[:, :, mel_start:mel_start + frames_per_seg]
+                audio = audio[:, mel_start * self.hop_size:(mel_start + frames_per_seg) * self.hop_size]
+            else:
+                mel = torch.nn.functional.pad(mel, (0, frames_per_seg - mel.size(2)), 'constant')
+                audio = torch.nn.functional.pad(audio, (0, self.segment_size - audio.size(1)), 'constant')
 
         return (mel.squeeze(), audio.squeeze(0), filename)
 
