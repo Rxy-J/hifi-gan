@@ -6,9 +6,9 @@ import numpy as np
 import argparse
 import json
 import torch
-from scipy.io.wavfile import write
 from env import AttrDict
 from models import Generator
+from audio import save_wav
 
 h = None
 device = None
@@ -46,12 +46,14 @@ def inference(a):
         for i, filname in enumerate(filelist):
             x = np.load(os.path.join(a.input_mels_dir, filname))
             x = torch.FloatTensor(x).to(device)
+            if len(x.size()) < 3:
+                x = x.unsqueeze(0)
             y_g_hat = generator(x)
             audio = y_g_hat.squeeze()
-            audio = audio.cpu().numpy().astype('int16')
+            audio = audio.cpu().numpy()
 
             output_file = os.path.join(a.output_dir, os.path.splitext(filname)[0] + '_generated_e2e.wav')
-            write(output_file, h.sampling_rate, audio)
+            save_wav(audio, output_file, h.sampling_rate)
             print(output_file)
 
 
