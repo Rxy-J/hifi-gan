@@ -5,10 +5,9 @@ import os
 import argparse
 import json
 import torch
-from scipy.io.wavfile import write
 from env import AttrDict
 from models import Generator
-from audio import melspectrogram, load_wav
+from audio import melspectrogram, load_wav, save_wav
 
 h = None
 device = None
@@ -52,14 +51,13 @@ def inference(a):
                             h.sampling_rate, 
                             h.win_size, 
                             h.hop_size)
-            wav = torch.FloatTensor(wav).to(device)
-            x = get_mel(wav.unsqueeze(0))
-            y_g_hat = generator(x)
+            x = torch.FloatTensor(get_mel(wav)).to(device)
+            y_g_hat = generator(x.unsqueeze(0))
             audio = y_g_hat.squeeze()
-            audio = audio.cpu().numpy().astype('int16')
+            audio = audio.cpu().numpy()
 
             output_file = os.path.join(a.output_dir, os.path.splitext(filname)[0] + '_generated.wav')
-            write(output_file, h.sampling_rate, audio)
+            save_wav(audio, output_file, h.sampling_rate)
             print(output_file)
 
 

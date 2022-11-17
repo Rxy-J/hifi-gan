@@ -145,7 +145,8 @@ class Generator(torch.nn.Module):
             l.remove_weight_norm()
         remove_weight_norm(self.conv_pre)
         remove_weight_norm(self.conv_post)
-        remove_weight_norm(self.post_filter)
+        if self.use_sub_band:
+            remove_weight_norm(self.post_filter)
 
 
 class DiscriminatorP(torch.nn.Module):
