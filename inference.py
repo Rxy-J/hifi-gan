@@ -5,6 +5,7 @@ import os
 import argparse
 import json
 import torch
+from tqdm import tqdm
 from env import AttrDict
 from models import Generator
 from audio import melspectrogram, load_wav, save_wav
@@ -46,17 +47,18 @@ def inference(a):
     generator.eval()
     generator.remove_weight_norm()
     with torch.no_grad():
-        for i, filname in enumerate(filelist):
+        for i, filname in tqdm(enumerate(filelist)):
             wav = load_wav(os.path.join(a.input_wavs_dir, filname), h.sampling_rate, h.sampling_rate, h.win_size, h.hop_size)
-            x = get_mel(wav)
-            x = torch.FloatTensor(x).to(device)
+            x = torch.FloatTensor(get_mel(wav)).to(device)
+            if len(x.size()) < 3:
+                x = x.unsqueeze(0)
             y_g_hat = generator.inference(x)
             audio = y_g_hat.squeeze()
             audio = audio.cpu().numpy()
 
             output_file = os.path.join(a.output_dir, os.path.splitext(filname)[0] + '_generated.wav')
             save_wav(audio, output_file, h.sampling_rate)
-            print(output_file)
+            # print(output_file)
 
 
 def main():
