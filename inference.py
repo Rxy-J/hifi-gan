@@ -52,7 +52,9 @@ def inference(a):
                             h.win_size, 
                             h.hop_size)
             x = torch.FloatTensor(get_mel(wav)).to(device)
-            y_g_hat = generator(x.unsqueeze(0))
+            if len(x.size()) < 3:
+                x = x.unsqueeze(0)
+            y_g_hat = generator(x)
             audio = y_g_hat.squeeze()
             audio = audio.cpu().numpy()
 

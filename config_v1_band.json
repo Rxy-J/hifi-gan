@@ -40,7 +40,16 @@
     "allow_clipping_in_normalization": true,
     "symmetric_acoustic": true,
 
-    "num_workers": 1,
+    "use_stft_loss": true,
+    "full_fft_sizes": [512, 1024, 2048],
+    "full_win_sizes": [50, 120, 240],
+    "full_hop_sizes": [240, 600, 1200],
+
+    "sub_fft_sizes": [120, 256, 512],
+    "sub_win_sizes": [10, 30, 60],
+    "sub_hop_sizes": [100, 200, 300],
+
+    "num_workers": 4,
 
     "dist_config": {
         "dist_backend": "nccl",

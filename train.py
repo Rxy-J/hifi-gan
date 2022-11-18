@@ -14,8 +14,8 @@ from torch.distributed import init_process_group
 from torch.nn.parallel import DistributedDataParallel
 from env import AttrDict, build_env
 from meldataset import MelDataset, get_dataset_filelist
-from models import Generator, MultiPeriodDiscriminator, MultiScaleDiscriminator, feature_loss, generator_loss,\
-    discriminator_loss, mel_spectrogram
+from models import Generator, MultiPeriodDiscriminator, MultiScaleDiscriminator, mel_spectrogram
+from loss import MultiResolutionSTFTLoss, generator_loss, feature_loss, discriminator_loss
 from utils import plot_spectrogram, scan_checkpoint, load_checkpoint, save_checkpoint
 
 torch.backends.cudnn.benchmark = True
@@ -96,6 +96,20 @@ def train(rank, a, h):
 
         sw = SummaryWriter(os.path.join(a.checkpoint_path, 'logs'))
 
+    if h.get("use_stft_loss"):
+        if h.get("num_bands") and h.num_bands > 1:
+            stft_loss = MultiResolutionSTFTLoss(
+                fft_sizes=h.sub_fft_sizes,
+                win_sizes=h.sub_win_sizes,
+                hop_sizes=h.sub_hop_sizes
+            )
+        else:
+            stft_loss = MultiResolutionSTFTLoss(
+                fft_sizes=h.full_fft_sizes,
+                win_sizes=h.full_win_sizes,
+                hop_sizes=h.full_hop_sizes
+            )
+
     generator.train()
     mpd.train()
     msd.train()
@@ -147,6 +161,9 @@ def train(rank, a, h):
             loss_gen_f, losses_gen_f = generator_loss(y_df_hat_g)
             loss_gen_s, losses_gen_s = generator_loss(y_ds_hat_g)
             loss_gen_all = loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel
+            if h.get("use_stft_loss"):
+                loss_stft_sc, loss_stft_mag = stft_loss(y_g_hat, y)
+                loss_gen_all += loss_stft_sc + loss_stft_mag
 
             loss_gen_all.backward()
             optim_g.step()

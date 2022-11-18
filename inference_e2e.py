@@ -50,7 +50,7 @@ def inference(a):
                 x = x.unsqueeze(0)
             y_g_hat = generator(x)
             audio = y_g_hat.squeeze()
-            audio = audio.cpu().numpy().astype('int16')
+            audio = audio.cpu().numpy()
 
             output_file = os.path.join(a.output_dir, os.path.splitext(filname)[0] + '_generated_e2e.wav')
             save_wav(audio, output_file, h.sampling_rate)
