@@ -26,7 +26,7 @@ def train(rank, a, h):
                            world_size=h.dist_config['world_size'] * h.num_gpus, rank=rank)
 
     torch.cuda.manual_seed(h.seed)
-    device = torch.device('cuda:{:d}'.format(rank))
+    device = torch.device('cuda:{:d}'.format(rank)) if torch.cuda.is_available() else torch.device("cpu")
 
     generator = Generator(h).to(device)
     mpd = MultiPeriodDiscriminator().to(device)
@@ -97,18 +97,18 @@ def train(rank, a, h):
         sw = SummaryWriter(os.path.join(a.checkpoint_path, 'logs'))
 
     if h.get("use_stft_loss"):
-        if h.get("num_bands") and h.num_bands > 1:
-            stft_loss = MultiResolutionSTFTLoss(
-                fft_sizes=h.sub_fft_sizes,
-                win_sizes=h.sub_win_sizes,
-                hop_sizes=h.sub_hop_sizes
-            )
-        else:
-            stft_loss = MultiResolutionSTFTLoss(
-                fft_sizes=h.full_fft_sizes,
-                win_sizes=h.full_win_sizes,
-                hop_sizes=h.full_hop_sizes
-            )
+        # if h.get("num_bands") and h.num_bands > 1:
+        #     stft_loss = MultiResolutionSTFTLoss(
+        #         fft_sizes=h.sub_fft_sizes,
+        #         win_sizes=h.sub_win_sizes,
+        #         hop_sizes=h.sub_hop_sizes
+        #     )
+        # else:
+        stft_loss = MultiResolutionSTFTLoss(
+            fft_sizes=h.full_fft_sizes,
+            win_sizes=h.full_win_sizes,
+            hop_sizes=h.full_hop_sizes
+        )
 
     generator.train()
     mpd.train()
@@ -162,7 +162,7 @@ def train(rank, a, h):
             loss_gen_s, losses_gen_s = generator_loss(y_ds_hat_g)
             loss_gen_all = loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel
             if h.get("use_stft_loss"):
-                loss_stft_sc, loss_stft_mag = stft_loss(y_g_hat, y)
+                loss_stft_sc, loss_stft_mag = stft_loss(y_g_hat.squeeze(1), y.squeeze(1))
                 loss_gen_all += loss_stft_sc + loss_stft_mag
 
             loss_gen_all.backward()
