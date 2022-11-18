@@ -40,7 +40,7 @@
     "allow_clipping_in_normalization": true,
     "symmetric_acoustic": true,
 
-    "num_workers": 1,
+    "num_workers": 4,
 
     "dist_config": {
         "dist_backend": "nccl",
