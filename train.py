@@ -162,7 +162,7 @@ def train(rank, a, h):
             loss_gen_s, losses_gen_s = generator_loss(y_ds_hat_g)
             loss_gen_all = loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel
             if h.get("use_stft_loss"):
-                loss_stft_sc, loss_stft_mag = stft_loss(y_g_hat.squeeze(1), y.squeeze(1))
+                loss_stft_sc, loss_stft_mag = stft_loss(y_g_hat.squeeze(1).cpu(), y.squeeze(1).cpu())
                 loss_gen_all += loss_stft_sc + loss_stft_mag
 
             loss_gen_all.backward()
