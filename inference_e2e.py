@@ -7,6 +7,7 @@ import argparse
 import json
 import torch
 from tqdm import tqdm
+from time import time
 from env import AttrDict
 from models import Generator
 from audio import save_wav
@@ -43,19 +44,24 @@ def inference(a):
 
     generator.eval()
     generator.remove_weight_norm()
+    rtfs = []
     with torch.no_grad():
         for i, filname in tqdm(enumerate(filelist)):
             x = np.load(os.path.join(a.input_mels_dir, filname))
             x = torch.FloatTensor(x).to(device)
             if len(x.size()) < 3:
                 x = x.unsqueeze(0)
+            start=time()
             y_g_hat = generator(x)
             audio = y_g_hat.squeeze()
+            rtf = (time()-start)/(audio.size(-1)/h.sampling_rate)
+            rtfs.append(rtf)
             audio = audio.cpu().numpy()
 
             output_file = os.path.join(a.output_dir, os.path.splitext(filname)[0] + '_generated_e2e.wav')
             save_wav(audio, output_file, h.sampling_rate)
-            # print(output_file)
+            print(output_file, f"\tRTF: {rtf:.4f}")
+    print(f"Avg RTF: {sum(rtfs)/len(rtfs):.6f}")
 
 
 def main():
