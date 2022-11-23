@@ -51,7 +51,8 @@ def inference(a):
                             h.sampling_rate, 
                             h.win_size, 
                             h.hop_size)
-            x = torch.FloatTensor(get_mel(wav)).to(device)
+            # TODO
+            # x = torch.FloatTensor(get_mel(wav)).to(device)
             if len(x.size()) < 3:
                 x = x.unsqueeze(0)
             y_g_hat = generator(x)
