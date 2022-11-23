@@ -50,11 +50,12 @@ def inference(a):
     with torch.no_grad():
         for i, filname in tqdm(enumerate(filelist)):
             wav = load_wav(os.path.join(a.input_wavs_dir, filname), 
-                            h.sampling_rate, 
-                            h.sampling_rate, 
-                            h.win_size, 
-                            h.hop_size)
-            x = torch.FloatTensor(get_mel(wav)).to(device)
+                            h.mel_sampling_rate, 
+                            h.mel_sampling_rate, 
+                            h.mel_win_size, 
+                            h.mel_hop_size)
+            # TODO
+            # x = torch.FloatTensor(get_mel(wav)).to(device)
             start = time()
             y_g_hat = generator(x.unsqueeze(0))
             audio = y_g_hat.squeeze()
