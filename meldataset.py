@@ -43,7 +43,7 @@ class MelDataset(torch.utils.data.Dataset):
         self.device = device
         self.fine_tuning = fine_tuning
         self.base_mels_path = base_mels_path
-        self.mel_frames_per_seg =  math.ceil(self.segment_size / self.mel_hop_size)
+        self.mel_frames_per_seg =  math.ceil(self.segment_size / self.hparams.mel_hop_size)
         self.rate = self.hparams.sampling_rate / self.hparams.mel_sampling_rate
         self.audio_length = self.rate * self.segment_size
 
@@ -75,7 +75,7 @@ class MelDataset(torch.utils.data.Dataset):
             if audio.size(1) >= self.audio_length:
                 mel_start = random.randint(0, mel.size(2) - self.mel_frames_per_seg - 1)
                 mel = mel[:, :, mel_start:mel_start + self.mel_frames_per_seg]
-                audio = audio[:, mel_start * self.hop_size * self.rate:(mel_start + self.mel_frames_per_seg) * self.hop_size * self.rate]
+                audio = audio[:, int(mel_start * self.hop_size * self.rate):int((mel_start + self.mel_frames_per_seg) * self.hop_size * self.rate)]
             else:
                 mel = torch.nn.functional.pad(mel, (0, self.mel_frames_per_seg - mel.size(2)), 'constant')
                 audio = torch.nn.functional.pad(audio, (0, self.segment_size * self.rate - audio.size(1)), 'constant')
